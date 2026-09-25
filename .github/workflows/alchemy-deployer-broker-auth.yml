@@ -18,6 +18,10 @@ on:
         type: boolean
         required: false
         default: false
+      github_app_preflight:
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -99,17 +103,71 @@ jobs:
             scopes, lifetime_seconds: payload.exp - payload.iat, expires_in }));
           NODE
 
+      - name: Verify GitHub App scope with dedicated test client
+        if: inputs.github_app_preflight
+        run: |
+          node --input-type=module <<'NODE'
+          const githubUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+          githubUrl.searchParams.set('audience', 'https://auth.maccrae.family');
+          const assertionResponse = await fetch(githubUrl, {
+            headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+          });
+          if (!assertionResponse.ok) throw new Error(`GitHub OIDC returned HTTP ${assertionResponse.status}`);
+          const { value: assertion } = await assertionResponse.json();
+          if (typeof assertion !== 'string') throw new Error('GitHub assertion missing');
+          console.log(`::add-mask::${assertion}`);
+          const exchange = await fetch('https://auth.maccrae.family/api/oidc/token', {
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'client_credentials',
+              client_id: 'cebeb6f9-e9f9-4b7b-809c-7fb108b1cd15',
+              client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+              client_assertion: assertion,
+              resource: 'https://broker.ops.sweepy.dev',
+              scope: 'github-app:5066086',
+            }),
+          });
+          if (!exchange.ok) throw new Error(`Pocket ID GitHub App exchange returned HTTP ${exchange.status}`);
+          const { access_token: pocketToken } = await exchange.json();
+          if (typeof pocketToken !== 'string') throw new Error('Pocket ID token missing');
+          console.log(`::add-mask::${pocketToken}`);
+          const broker = await fetch('https://broker.ops.sweepy.dev/v1/github/apps/5066086/token', {
+            method: 'POST', headers: { Authorization: `Bearer ${pocketToken}`, 'Content-Type': 'application/json' }, body: '{}',
+          });
+          if (!broker.ok) throw new Error(`Broker GitHub App request returned HTTP ${broker.status}`);
+          const { token, expires_at } = await broker.json();
+          if (typeof token !== 'string' || typeof expires_at !== 'string') throw new Error('GitHub App credential response incomplete');
+          console.log(`::add-mask::${token}`);
+          const ttl = (Date.parse(expires_at) - Date.now()) / 1000;
+          if (ttl < 3500 || ttl > 3600) throw new Error(`GitHub App token lifetime outside one hour: ${ttl}`);
+          const repositoryResponse = await fetch('https://api.github.com/installation/repositories', {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'workload-identity-broker-preflight' },
+          });
+          if (!repositoryResponse.ok) throw new Error(`GitHub installation token rejected: HTTP ${repositoryResponse.status}`);
+          const repositories = await repositoryResponse.json();
+          if (!Array.isArray(repositories.repositories) || !repositories.repositories.some(repo => repo.full_name === 'sweepies/ops-workflows')) {
+            throw new Error('GitHub installation token did not include expected repository');
+          }
+          const denied = await fetch('https://broker.ops.sweepy.dev/v1/railway/token', {
+            method: 'POST', headers: { Authorization: `Bearer ${pocketToken}`, 'Content-Type': 'application/json' }, body: '{}',
+          });
+          if (denied.status !== 403) throw new Error(`GitHub-only test client reached Railway: HTTP ${denied.status}`);
+          console.log(JSON.stringify({ github_token_ttl_seconds: Math.round(ttl), installation_repository_count: repositories.total_count,
+            railway_denial_status: denied.status }));
+          NODE
+
       - name: Checkout caller repository
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && !inputs.github_app_preflight }}
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install project dependencies
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && !inputs.github_app_preflight }}
         working-directory: ${{ inputs.working_directory }}
         run: npm ci
 
       - name: Deploy with broker credentials
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && !inputs.github_app_preflight }}
         uses: sweepies/ops-workflows/.github/actions/broker-auth@main
         with:
           working-directory: ${{ inputs.working_directory }}
