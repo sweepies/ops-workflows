@@ -32,6 +32,10 @@ function decodePayload(token) {
   return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
 }
 
+// Mask the caller-minted assertion too: it arrives as a secret, but belt
+// and suspenders if this action is ever wired differently.
+process.stdout.write(`::add-mask::${GITHUB_OIDC_TOKEN}\n`);
+
 // 1. Discover Pocket ID's token endpoint and exchange the GitHub assertion.
 const discovery = await getJson(`${POCKET_ISSUER}/.well-known/openid-configuration`);
 if (discovery.issuer !== POCKET_ISSUER) throw new Error("Pocket ID issuer mismatch");
