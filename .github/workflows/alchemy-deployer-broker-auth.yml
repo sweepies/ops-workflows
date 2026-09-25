@@ -10,6 +10,36 @@ on:
         type: string
         required: false
         default: npm
+      secret_source:
+        description: fnox (age-encrypted secrets via FNOX_AGE_KEY) or bao (OpenBao via GitHub OIDC)
+        type: string
+        required: false
+        default: fnox
+      tailscale_client_id:
+        description: Tailscale federated identity client ID for the tailnet join (bao mode)
+        type: string
+        required: false
+        default: TqY9uciA9H41CNTRL-kbS2WfACxt11CNTRL
+      tailscale_audience:
+        description: Tailscale federated identity audience (bao mode)
+        type: string
+        required: false
+        default: api.tailscale.com/TqY9uciA9H41CNTRL-kbS2WfACxt11CNTRL
+      bao_address:
+        description: OpenBao API base URL (bao mode)
+        type: string
+        required: false
+        default: https://openbao.internal.maccrae.family
+      bao_jwt_role:
+        description: OpenBao JWT auth role bound to the caller repository (bao mode)
+        type: string
+        required: false
+        default: ""
+      bao_secret_path:
+        description: OpenBao KV v2 logical path, e.g. kv/renovate-ce (bao mode)
+        type: string
+        required: false
+        default: ""
       claim_preflight:
         type: boolean
         required: false
@@ -110,22 +140,34 @@ jobs:
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Validate deployment profile
+      - name: Validate inputs
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
         env:
           DEPLOYMENT_PROFILE: ${{ inputs.deployment_profile }}
+          SECRET_SOURCE: ${{ inputs.secret_source }}
+          BAO_JWT_ROLE: ${{ inputs.bao_jwt_role }}
+          BAO_SECRET_PATH: ${{ inputs.bao_secret_path }}
         run: |
-          case "$DEPLOYMENT_PROFILE" in
-            npm|bun-fnox) ;;
-            *) echo 'Unsupported deployment profile' >&2; exit 1 ;;
+          case "$SECRET_SOURCE" in
+            fnox) case "$DEPLOYMENT_PROFILE" in npm|bun-fnox) ;; *) echo 'fnox mode needs npm or bun-fnox' >&2; exit 1 ;; esac ;;
+            bao)
+              case "$DEPLOYMENT_PROFILE" in npm|bun) ;; *) echo 'bao mode needs npm or bun' >&2; exit 1 ;; esac
+              [ -n "$BAO_JWT_ROLE" ] || { echo 'bao mode needs bao_jwt_role' >&2; exit 1; }
+              [ -n "$BAO_SECRET_PATH" ] || { echo 'bao mode needs bao_secret_path' >&2; exit 1; }
+              ;;
+            *) echo 'secret_source must be fnox or bao' >&2; exit 1 ;;
           esac
 
       - name: Install Bun and fnox
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'bun-fnox' }}
         uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
 
+      - name: Install Bun
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'bun' }}
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
+
       - name: Install Bun project dependencies
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'bun-fnox' }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && (inputs.deployment_profile == 'bun-fnox' || inputs.deployment_profile == 'bun') }}
         working-directory: ${{ inputs.working_directory }}
         run: bun install --frozen-lockfile
 
@@ -133,6 +175,22 @@ jobs:
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'npm' }}
         working-directory: ${{ inputs.working_directory }}
         run: npm ci
+
+      - name: Join Tailscale
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.secret_source == 'bao' }}
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4
+        with:
+          oauth-client-id: ${{ inputs.tailscale_client_id }}
+          audience: ${{ inputs.tailscale_audience }}
+          tags: tag:alchemy-deployer
+
+      - name: Fetch secrets from OpenBao
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.secret_source == 'bao' }}
+        uses: sweepies/ops-workflows/.github/actions/fetch-bao-secrets@main
+        with:
+          bao-address: ${{ inputs.bao_address }}
+          jwt-role: ${{ inputs.bao_jwt_role }}
+          secret-path: ${{ inputs.bao_secret_path }}
 
       - name: Deploy with broker credentials
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}

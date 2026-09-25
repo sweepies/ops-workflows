@@ -47,11 +47,16 @@ const data = kv?.data?.data;
 if (!data || typeof data !== "object") throw new Error("OpenBao KV response had no data");
 
 // 4. Mask every value and export it for later steps.
+// add-mask only registers the first line of a multiline value, so mask
+// each line separately; otherwise multiline secrets leak into step logs
+// via the runner's environment dump.
 const delimiter = `EOF_${randomBytes(8).toString("hex")}`;
 let envOut = "";
 for (const [key, value] of Object.entries(data)) {
   if (typeof value !== "string") throw new Error(`Secret ${key} is not a string`);
-  process.stdout.write(`::add-mask::${value}\n`);
+  for (const line of value.split("\n")) {
+    if (line) process.stdout.write(`::add-mask::${line}\n`);
+  }
   envOut += `${key}<<${delimiter}\n${value}\n${delimiter}\n`;
 }
 appendFileSync(GITHUB_ENV, envOut);
