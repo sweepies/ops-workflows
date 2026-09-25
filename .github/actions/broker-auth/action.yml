@@ -33,7 +33,7 @@ runs:
         POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
-      run: node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- fnox exec --replace -- bun run deploy
+      run: fnox exec --replace -- node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- bun run deploy
     - shell: bash
       if: ${{ inputs.check_only == 'true' }}
       env:
