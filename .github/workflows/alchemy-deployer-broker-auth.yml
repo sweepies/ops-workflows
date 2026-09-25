@@ -6,6 +6,10 @@ on:
         type: string
         required: false
         default: .
+      deployment_profile:
+        type: string
+        required: false
+        default: npm
       claim_preflight:
         type: boolean
         required: false
@@ -18,6 +22,9 @@ on:
         type: boolean
         required: false
         default: false
+    secrets:
+      FNOX_AGE_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -103,8 +110,27 @@ jobs:
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Install project dependencies
+      - name: Validate deployment profile
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
+        env:
+          DEPLOYMENT_PROFILE: ${{ inputs.deployment_profile }}
+        run: |
+          case "$DEPLOYMENT_PROFILE" in
+            npm|bun-fnox) ;;
+            *) echo 'Unsupported deployment profile' >&2; exit 1 ;;
+          esac
+
+      - name: Install Bun and fnox
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'bun-fnox' }}
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
+
+      - name: Install Bun project dependencies
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'bun-fnox' }}
+        working-directory: ${{ inputs.working_directory }}
+        run: bun install --frozen-lockfile
+
+      - name: Install npm project dependencies
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.deployment_profile == 'npm' }}
         working-directory: ${{ inputs.working_directory }}
         run: npm ci
 
@@ -113,6 +139,10 @@ jobs:
         uses: sweepies/ops-workflows/.github/actions/broker-auth@main
         with:
           working-directory: ${{ inputs.working_directory }}
+          deployment-profile: ${{ inputs.deployment_profile }}
+        env:
+          CI: "true"
+          FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
 
       - name: Verify broker and provider credentials
         if: inputs.integration_preflight

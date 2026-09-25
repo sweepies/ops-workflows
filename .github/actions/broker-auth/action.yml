@@ -9,11 +9,15 @@ inputs:
     description: Verify broker checkout and provider credentials without deploying
     required: false
     default: "false"
+  deployment-profile:
+    description: npm or bun-fnox
+    required: false
+    default: npm
 runs:
   using: composite
   steps:
     - shell: bash
-      if: ${{ inputs.check_only == 'false' }}
+      if: ${{ inputs.check_only == 'false' && inputs.deployment-profile == 'npm' }}
       env:
         POCKET_ISSUER: https://auth.maccrae.family
         POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
@@ -21,6 +25,15 @@ runs:
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
       run: node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- npm exec --no -- alchemy deploy
+    - shell: bash
+      if: ${{ inputs.check_only == 'false' && inputs.deployment-profile == 'bun-fnox' }}
+      env:
+        POCKET_ISSUER: https://auth.maccrae.family
+        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
+        BROKER_URL: https://broker.ops.sweepy.dev
+        ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
+      run: node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- fnox exec --replace -- bun run deploy
     - shell: bash
       if: ${{ inputs.check_only == 'true' }}
       env:
