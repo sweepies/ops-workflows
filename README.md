@@ -1,0 +1,9 @@
+# ops-workflows
+
+Reusable Alchemy deployment workflow for `sweepies`.
+
+Call `sweepies/ops-workflows/.github/workflows/alchemy-deployer-broker-auth.yml@main` from an approved repository. The called job requests GitHub OIDC, exchanges it with Pocket ID client `fce36569-010c-4e17-bd30-6fbf9088af07`, obtains Cloudflare and Railway credentials from the broker, and runs local `alchemy deploy`. The GitHub App scope is deliberately absent.
+
+Before deployment, run the manual `Broker claim preflight` workflow. It prints only `iss`, `aud`, `sub`, and `job_workflow_ref`, never the raw assertion. Configure the Pocket ID federated credential Subject to exactly match the printed `sub`. GitHub's repository or organization OIDC subject template must include `job_workflow_ref` for Pocket ID to bind the reusable workflow identity.
+
+The reusable workflow file is directly under `.github/workflows`, as GitHub requires. The single broker exchange implementation is in `.github/actions/broker-auth/broker-auth.mjs`; successful credentials stay in the deploy step's process tree and are masked immediately.

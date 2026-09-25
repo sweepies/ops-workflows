@@ -1,0 +1,59 @@
+name: Alchemy deploy through Pocket ID broker
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        type: string
+        required: false
+        default: .
+      claim_preflight:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect GitHub OIDC claim contract
+        if: inputs.claim_preflight
+        env:
+          POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
+        run: |
+          node --input-type=module <<'NODE'
+          const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+          url.searchParams.set('audience', process.env.POCKET_FEDERATED_AUDIENCE);
+          const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+          });
+          if (!response.ok) throw new Error(`GitHub OIDC returned HTTP ${response.status}`);
+          const { value } = await response.json();
+          if (typeof value !== 'string') throw new Error('GitHub OIDC token missing');
+          console.log(`::add-mask::${value}`);
+          const payload = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString());
+          console.log(JSON.stringify({
+            iss: payload.iss,
+            aud: payload.aud,
+            sub: payload.sub,
+            job_workflow_ref: payload.job_workflow_ref,
+          }));
+          NODE
+
+      - name: Checkout caller repository
+        if: ${{ !inputs.claim_preflight }}
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install project dependencies
+        if: ${{ !inputs.claim_preflight }}
+        working-directory: ${{ inputs.working_directory }}
+        run: npm ci
+
+      - name: Deploy with broker credentials
+        if: ${{ !inputs.claim_preflight }}
+        uses: sweepies/ops-workflows/.github/actions/broker-auth@main
+        with:
+          working-directory: ${{ inputs.working_directory }}

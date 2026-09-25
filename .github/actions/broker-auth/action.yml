@@ -1,0 +1,18 @@
+name: Broker authenticated Alchemy deploy
+description: Exchange GitHub OIDC through Pocket ID, check out provider credentials, and run local Alchemy
+inputs:
+  working-directory:
+    description: Directory containing the Alchemy project
+    required: false
+    default: .
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        POCKET_ISSUER: https://auth.maccrae.family
+        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
+        BROKER_URL: https://broker.ops.sweepy.dev
+        ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
+      run: node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- npm exec --no -- alchemy deploy
