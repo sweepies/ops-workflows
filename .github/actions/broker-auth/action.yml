@@ -5,10 +5,15 @@ inputs:
     description: Directory containing the Alchemy project
     required: false
     default: .
+  check_only:
+    description: Verify broker checkout and provider credentials without deploying
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
     - shell: bash
+      if: ${{ inputs.check_only == 'false' }}
       env:
         POCKET_ISSUER: https://auth.maccrae.family
         POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
@@ -16,3 +21,13 @@ runs:
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
       run: node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- npm exec --no -- alchemy deploy
+    - shell: bash
+      if: ${{ inputs.check_only == 'true' }}
+      env:
+        POCKET_ISSUER: https://auth.maccrae.family
+        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
+        BROKER_URL: https://broker.ops.sweepy.dev
+        ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
+        BROKER_CHECK_MODE: "1"
+      run: node "$GITHUB_ACTION_PATH/broker-auth.mjs" -- node "$GITHUB_ACTION_PATH/check.mjs"

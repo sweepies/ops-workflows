@@ -41,6 +41,16 @@ const accessToken = (await getJson(discovery.token_endpoint, { method: "POST",
   headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form })).access_token;
 if (typeof accessToken !== "string") throw new Error("Pocket ID response lacked an access token");
 mask(accessToken);
+if (process.env.BROKER_CHECK_MODE === "1") {
+  const githubAssertionProbe = await fetch(new URL("/v1/railway/token", BROKER_URL), {
+    method: "POST", headers: { Authorization: `Bearer ${assertion}`, "Content-Type": "application/json" }, body: "{}",
+  });
+  if (githubAssertionProbe.status !== 401) throw new Error(`GitHub assertion broker probe returned HTTP ${githubAssertionProbe.status}`);
+  const ungrantedScopeProbe = await fetch(new URL("/v1/github/apps/5066086/token", BROKER_URL), {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: "{}",
+  });
+  if (ungrantedScopeProbe.status !== 403) throw new Error(`Ungranted GitHub scope probe returned HTTP ${ungrantedScopeProbe.status}`);
+}
 async function checkout(path) {
   const url = new URL(path, BROKER_URL);
   if (url.origin !== new URL(BROKER_URL).origin) throw new Error("Broker URL mismatch");

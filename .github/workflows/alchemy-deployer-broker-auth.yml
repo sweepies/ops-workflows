@@ -14,6 +14,10 @@ on:
         type: boolean
         required: false
         default: false
+      integration_preflight:
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -96,16 +100,22 @@ jobs:
           NODE
 
       - name: Checkout caller repository
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install project dependencies
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
         working-directory: ${{ inputs.working_directory }}
         run: npm ci
 
       - name: Deploy with broker credentials
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight }}
+        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
         uses: sweepies/ops-workflows/.github/actions/broker-auth@main
         with:
           working-directory: ${{ inputs.working_directory }}
+
+      - name: Verify broker and provider credentials
+        if: inputs.integration_preflight
+        uses: sweepies/ops-workflows/.github/actions/broker-auth@main
+        with:
+          check_only: "true"

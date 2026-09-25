@@ -1,0 +1,16 @@
+name: Broker integration preflight
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  inspect:
+    uses: ./.github/workflows/alchemy-deployer-broker-auth.yml
+    with:
+      integration_preflight: true
+    permissions:
+      contents: read
+      id-token: write
