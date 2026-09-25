@@ -1,0 +1,30 @@
+name: Fetch secrets from OpenBao via GitHub OIDC
+description: >-
+  Log in to OpenBao with the workflow's GitHub OIDC token (JWT auth backend),
+  read one KV v2 path, and export every key as a masked environment variable
+  for later steps. The runner must already be able to reach OpenBao
+  (e.g. joined to the tailnet first).
+inputs:
+  bao-address:
+    description: OpenBao API base URL, e.g. https://openbao.internal.maccrae.family
+    required: true
+  jwt-role:
+    description: JWT auth role bound to this repository
+    required: true
+  secret-path:
+    description: KV v2 logical path, e.g. kv/renovate-ce
+    required: true
+  oidc-audience:
+    description: Audience to request on the GitHub OIDC token
+    required: false
+    default: bao
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        BAO_ADDRESS: ${{ inputs.bao-address }}
+        BAO_JWT_ROLE: ${{ inputs.jwt-role }}
+        BAO_SECRET_PATH: ${{ inputs.secret-path }}
+        BAO_OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
+      run: node "$GITHUB_ACTION_PATH/fetch-bao-secrets.mjs"
