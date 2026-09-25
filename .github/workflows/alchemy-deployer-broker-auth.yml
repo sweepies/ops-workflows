@@ -11,7 +11,7 @@ on:
         required: false
         default: npm
       secret_source:
-        description: fnox (age-encrypted secrets via FNOX_AGE_KEY) or bao (OpenBao via GitHub OIDC)
+        description: fnox (age-encrypted secrets via FNOX_AGE_KEY) or bao (OpenBao via Pocket ID)
         type: string
         required: false
         default: fnox
@@ -31,7 +31,17 @@ on:
         required: false
         default: https://openbao.internal.maccrae.family
       bao_jwt_role:
-        description: OpenBao JWT auth role bound to the caller repository (bao mode)
+        description: OpenBao JWT auth role bound to the Pocket ID client identity (bao mode)
+        type: string
+        required: false
+        default: ""
+      bao_jwt_mount:
+        description: OpenBao JWT auth mount trusting Pocket ID (bao mode)
+        type: string
+        required: false
+        default: jwt-pocket
+      pocket_bao_client_id:
+        description: Pocket ID OIDC client ID for the GitHub -> Pocket ID -> OpenBao exchange (bao mode)
         type: string
         required: false
         default: ""
@@ -54,6 +64,9 @@ on:
         default: false
     secrets:
       FNOX_AGE_KEY:
+        required: false
+      BAO_OIDC_TOKEN:
+        description: Caller-minted GitHub OIDC token for the Pocket ID -> OpenBao exchange (bao mode)
         required: false
 
 permissions:
@@ -147,6 +160,8 @@ jobs:
           SECRET_SOURCE: ${{ inputs.secret_source }}
           BAO_JWT_ROLE: ${{ inputs.bao_jwt_role }}
           BAO_SECRET_PATH: ${{ inputs.bao_secret_path }}
+          POCKET_BAO_CLIENT_ID: ${{ inputs.pocket_bao_client_id }}
+          BAO_OIDC_TOKEN: ${{ secrets.BAO_OIDC_TOKEN }}
         run: |
           case "$SECRET_SOURCE" in
             fnox) case "$DEPLOYMENT_PROFILE" in npm|bun-fnox) ;; *) echo 'fnox mode needs npm or bun-fnox' >&2; exit 1 ;; esac ;;
@@ -154,6 +169,8 @@ jobs:
               case "$DEPLOYMENT_PROFILE" in npm|bun) ;; *) echo 'bao mode needs npm or bun' >&2; exit 1 ;; esac
               [ -n "$BAO_JWT_ROLE" ] || { echo 'bao mode needs bao_jwt_role' >&2; exit 1; }
               [ -n "$BAO_SECRET_PATH" ] || { echo 'bao mode needs bao_secret_path' >&2; exit 1; }
+              [ -n "$POCKET_BAO_CLIENT_ID" ] || { echo 'bao mode needs pocket_bao_client_id' >&2; exit 1; }
+              [ -n "$BAO_OIDC_TOKEN" ] || { echo 'bao mode needs secrets.BAO_OIDC_TOKEN' >&2; exit 1; }
               ;;
             *) echo 'secret_source must be fnox or bao' >&2; exit 1 ;;
           esac
@@ -189,8 +206,11 @@ jobs:
         uses: sweepies/ops-workflows/.github/actions/fetch-bao-secrets@main
         with:
           bao-address: ${{ inputs.bao_address }}
+          jwt-mount: ${{ inputs.bao_jwt_mount }}
           jwt-role: ${{ inputs.bao_jwt_role }}
           secret-path: ${{ inputs.bao_secret_path }}
+          github-oidc-token: ${{ secrets.BAO_OIDC_TOKEN }}
+          pocket-client-id: ${{ inputs.pocket_bao_client_id }}
 
       - name: Deploy with broker credentials
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}

@@ -1,13 +1,21 @@
 #!/usr/bin/env node
-// Fetch one KV v2 path from OpenBao using the workflow's GitHub OIDC token.
+// Fetch one KV v2 path from OpenBao via Pocket ID.
+//
+// 1. Exchange the caller-minted GitHub OIDC token at Pocket ID (client
+//    credentials grant with a JWT bearer assertion) for a short-lived
+//    Bao-scoped access token.
+// 2. Log in to OpenBao with that token (JWT auth backend trusting Pocket ID).
+// 3. Read the KV v2 path.
 // Every key becomes a masked env var for subsequent steps via $GITHUB_ENV.
 import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
-const { BAO_ADDRESS, BAO_JWT_ROLE, BAO_SECRET_PATH, BAO_OIDC_AUDIENCE,
-  ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN, GITHUB_ENV } = process.env;
-for (const [k, v] of Object.entries({ BAO_ADDRESS, BAO_JWT_ROLE, BAO_SECRET_PATH,
-  ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN, GITHUB_ENV })) {
+const { BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE, BAO_SECRET_PATH,
+  GITHUB_OIDC_TOKEN, POCKET_ISSUER, POCKET_CLIENT_ID, POCKET_RESOURCE,
+  POCKET_SCOPE, GITHUB_ENV } = process.env;
+for (const [k, v] of Object.entries({ BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE,
+  BAO_SECRET_PATH, GITHUB_OIDC_TOKEN, POCKET_ISSUER, POCKET_CLIENT_ID,
+  POCKET_RESOURCE, POCKET_SCOPE, GITHUB_ENV })) {
   if (!v) throw new Error(`Missing required environment: ${k}`);
 }
 
@@ -15,24 +23,54 @@ async function getJson(url, init) {
   const res = await fetch(url, init);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`OpenBao request failed: HTTP ${res.status} ${url} ${detail.slice(0, 200)}`);
+    throw new Error(`Request failed: HTTP ${res.status} ${url} ${detail.slice(0, 300)}`);
   }
   return res.json();
 }
 
-// 1. Mint a GitHub OIDC token for OpenBao.
-const oidcUrl = new URL(ACTIONS_ID_TOKEN_REQUEST_URL);
-oidcUrl.searchParams.set("audience", BAO_OIDC_AUDIENCE || "bao");
-const assertion = (await getJson(oidcUrl, {
-  headers: { Authorization: `Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
-})).value;
-if (typeof assertion !== "string") throw new Error("GitHub OIDC response lacked a token");
+function decodePayload(token) {
+  return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+}
+
+// 1. Discover Pocket ID's token endpoint and exchange the GitHub assertion.
+const discovery = await getJson(`${POCKET_ISSUER}/.well-known/openid-configuration`);
+if (discovery.issuer !== POCKET_ISSUER) throw new Error("Pocket ID issuer mismatch");
+const exchangeBody = new URLSearchParams({
+  grant_type: "client_credentials",
+  client_id: POCKET_CLIENT_ID,
+  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+  client_assertion: GITHUB_OIDC_TOKEN,
+  resource: POCKET_RESOURCE,
+  scope: POCKET_SCOPE,
+});
+const exchange = await getJson(discovery.token_endpoint, {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: exchangeBody,
+});
+const pocketToken = exchange?.access_token;
+if (typeof pocketToken !== "string" || !pocketToken) {
+  throw new Error("Pocket ID exchange lacked an access token");
+}
+process.stdout.write(`::add-mask::${pocketToken}\n`);
+const claims = decodePayload(pocketToken);
+const aud = claims.aud;
+if (!(Array.isArray(aud) ? aud.includes(POCKET_RESOURCE) : aud === POCKET_RESOURCE)) {
+  throw new Error("Pocket ID token missing the Bao audience");
+}
+console.log(JSON.stringify({
+  pocket_issuer: claims.iss,
+  pocket_subject: claims.sub,
+  pocket_audience: aud,
+  pocket_scope: claims.scope ?? claims.scp,
+  pocket_lifetime_seconds: claims.exp - claims.iat,
+}));
 
 // 2. Trade it for a short-lived OpenBao token.
-const login = await getJson(`${BAO_ADDRESS}/v1/auth/jwt/login`, {
+const login = await getJson(`${BAO_ADDRESS}/v1/auth/${BAO_JWT_MOUNT}/login`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ jwt: assertion, role: BAO_JWT_ROLE }),
+  body: JSON.stringify({ jwt: pocketToken, role: BAO_JWT_ROLE }),
 });
 const baoToken = login?.auth?.client_token;
 if (typeof baoToken !== "string" || !baoToken) throw new Error("OpenBao login lacked a client token");

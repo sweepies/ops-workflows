@@ -1,30 +1,54 @@
-name: Fetch secrets from OpenBao via GitHub OIDC
+name: Fetch secrets from OpenBao via Pocket ID
 description: >-
-  Log in to OpenBao with the workflow's GitHub OIDC token (JWT auth backend),
-  read one KV v2 path, and export every key as a masked environment variable
-  for later steps. The runner must already be able to reach OpenBao
+  Exchange a caller-minted GitHub OIDC token at Pocket ID for a Bao-scoped
+  token (client credentials grant), log in to OpenBao with it (JWT auth
+  backend), read one KV v2 path, and export every key as a masked environment
+  variable for later steps. The runner must already be able to reach OpenBao
   (e.g. joined to the tailnet first).
 inputs:
   bao-address:
     description: OpenBao API base URL, e.g. https://openbao.internal.maccrae.family
     required: true
+  jwt-mount:
+    description: OpenBao JWT auth mount trusting Pocket ID
+    required: false
+    default: jwt-pocket
   jwt-role:
-    description: JWT auth role bound to this repository
+    description: JWT auth role bound to the Pocket ID client identity
     required: true
   secret-path:
     description: KV v2 logical path, e.g. kv/renovate-ce
     required: true
-  oidc-audience:
-    description: Audience to request on the GitHub OIDC token
+  github-oidc-token:
+    description: Caller-minted GitHub OIDC token (audience must be the Pocket ID issuer URL)
+    required: true
+  pocket-issuer:
+    description: Pocket ID issuer URL
     required: false
-    default: bao
+    default: https://auth.maccrae.family
+  pocket-client-id:
+    description: Pocket ID OIDC client ID for the GitHub -> Pocket ID exchange
+    required: true
+  pocket-resource:
+    description: OAuth resource indicator for the Bao-scoped token (becomes the token audience)
+    required: false
+    default: https://openbao.internal.maccrae.family
+  pocket-scope:
+    description: Scope to request on the Bao-scoped token
+    required: false
+    default: bao:read-secrets
 runs:
   using: composite
   steps:
     - shell: bash
       env:
         BAO_ADDRESS: ${{ inputs.bao-address }}
+        BAO_JWT_MOUNT: ${{ inputs.jwt-mount }}
         BAO_JWT_ROLE: ${{ inputs.jwt-role }}
         BAO_SECRET_PATH: ${{ inputs.secret-path }}
-        BAO_OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
+        GITHUB_OIDC_TOKEN: ${{ inputs.github-oidc-token }}
+        POCKET_ISSUER: ${{ inputs.pocket-issuer }}
+        POCKET_CLIENT_ID: ${{ inputs.pocket-client-id }}
+        POCKET_RESOURCE: ${{ inputs.pocket-resource }}
+        POCKET_SCOPE: ${{ inputs.pocket-scope }}
       run: node "$GITHUB_ACTION_PATH/fetch-bao-secrets.mjs"
