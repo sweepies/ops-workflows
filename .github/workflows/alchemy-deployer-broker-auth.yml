@@ -76,7 +76,12 @@ jobs:
           });
           const exchange = await fetch(discovery.token_endpoint, { method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-          if (!exchange.ok) throw new Error(`Pocket ID exchange returned HTTP ${exchange.status}`);
+          if (!exchange.ok) {
+            const detail = await exchange.json().catch(() => ({}));
+            console.log(JSON.stringify({ exchange_status: exchange.status,
+              error: detail.error, error_description: detail.error_description }));
+            throw new Error(`Pocket ID exchange returned HTTP ${exchange.status}`);
+          }
           const { access_token: token, expires_in } = await exchange.json();
           if (typeof token !== 'string') throw new Error('Pocket ID access token missing');
           console.log(`::add-mask::${token}`);
