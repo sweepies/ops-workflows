@@ -67,6 +67,11 @@ on:
         type: boolean
         required: false
         default: false
+      cloudflare_account_id:
+        description: Cloudflare account ID for alchemy state (not a secret)
+        type: string
+        required: false
+        default: ""
     secrets:
       FNOX_AGE_KEY:
         required: false
@@ -237,6 +242,7 @@ jobs:
         env:
           CI: "true"
           FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare_account_id }}
 
       - name: Verify broker and provider credentials
         if: inputs.integration_preflight
