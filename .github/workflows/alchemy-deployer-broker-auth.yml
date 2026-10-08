@@ -29,7 +29,7 @@ on:
         description: OpenBao API base URL (bao mode)
         type: string
         required: false
-        default: https://openbao.internal.maccrae.family
+        default: https://bao.maccrae.family
       bao_jwt_role:
         description: OpenBao JWT auth role bound to the Pocket ID client identity (bao mode)
         type: string
