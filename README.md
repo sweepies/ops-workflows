@@ -10,11 +10,12 @@ Call `sweepies/ops-workflows/.github/workflows/alchemy-deployer-broker-auth.yml@
 Each calling repository needs:
 
 - An OIDC subject template of `repo` + `job_workflow_ref` with immutable subjects: `gh api -X PUT repos/sweepies/<repo>/actions/oidc/customization/sub -F use_default=false -f 'include_claim_keys[]=repo' -f 'include_claim_keys[]=job_workflow_ref' -F use_immutable_subject=true`. The resulting `sub` is `repo:sweepies@7191851/<repo>@<repo id>:job_workflow_ref:sweepies/ops-workflows/.github/workflows/alchemy-deployer-broker-auth.yml@refs/heads/main`, distinct per repository even though every caller runs this same workflow.
-- Its own Pocket ID broker client (`pocket_broker_client_id`) and, in bao mode, its own OpenBao client (`pocket_bao_client_id`), each with that exact Subject. Pocket ID matches federated identities by issuer, so one client cannot trust several subjects.
+- Its own Pocket ID broker client (`pocket_broker_client_id`) with that exact Subject, granted the broker API's Cloudflare/Railway permissions. Pocket ID matches federated identities by issuer, so one client cannot trust several subjects.
+- In bao mode, a role on OpenBao's GitHub JWT mount (`jwt/`, `bound_audiences` `https://bao.maccrae.family`) with `bound_claims` on the caller's immutable `repository_id`, its `workflow_ref`, this workflow's `job_workflow_ref` and `ref: refs/heads/main`. Pocket ID is not involved in the OpenBao path.
 
 ops-workflows' own preflights use client `fce36569-010c-4e17-bd30-6fbf9088af07`. Run the manual `Broker claim preflight` here (or the equivalent `claim_preflight: true` call from a caller) to print `iss`, `aud`, `sub`, and `job_workflow_ref`, never the raw assertion.
 
-In bao mode the job reads one KV v2 path from `https://bao.maccrae.family` through the `jwt-pocket` mount; no tailnet join is needed.
+In bao mode the job logs in to `https://bao.maccrae.family` with its own GitHub OIDC token and reads one KV v2 path; no tailnet join is needed.
 
 The reusable workflow file is directly under `.github/workflows`, as GitHub requires. The single broker exchange implementation is in `.github/actions/broker-auth/broker-auth.mjs`; successful credentials stay in the deploy step's process tree and are masked immediately.
 

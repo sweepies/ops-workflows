@@ -28,20 +28,15 @@ on:
         required: false
         default: https://bao.maccrae.family
       bao_jwt_role:
-        description: OpenBao JWT auth role bound to the Pocket ID client identity (bao mode)
+        description: OpenBao GitHub JWT role bound to the caller's repository_id and workflow_ref (bao mode)
         type: string
         required: false
         default: ""
       bao_jwt_mount:
-        description: OpenBao JWT auth mount trusting Pocket ID (bao mode)
+        description: OpenBao JWT auth mount trusting GitHub Actions OIDC (bao mode)
         type: string
         required: false
-        default: jwt-pocket
-      pocket_bao_client_id:
-        description: Pocket ID OIDC client ID for the GitHub -> Pocket ID -> OpenBao exchange (bao mode)
-        type: string
-        required: false
-        default: ""
+        default: jwt
       bao_secret_path:
         description: OpenBao KV v2 logical path, e.g. kv/renovate-ce (bao mode)
         type: string
@@ -161,7 +156,6 @@ jobs:
           SECRET_SOURCE: ${{ inputs.secret_source }}
           BAO_JWT_ROLE: ${{ inputs.bao_jwt_role }}
           BAO_SECRET_PATH: ${{ inputs.bao_secret_path }}
-          POCKET_BAO_CLIENT_ID: ${{ inputs.pocket_bao_client_id }}
         run: |
           case "$SECRET_SOURCE" in
             fnox) case "$DEPLOYMENT_PROFILE" in npm|bun-fnox) ;; *) echo 'fnox mode needs npm or bun-fnox' >&2; exit 1 ;; esac ;;
@@ -169,7 +163,6 @@ jobs:
               case "$DEPLOYMENT_PROFILE" in npm|bun) ;; *) echo 'bao mode needs npm or bun' >&2; exit 1 ;; esac
               [ -n "$BAO_JWT_ROLE" ] || { echo 'bao mode needs bao_jwt_role' >&2; exit 1; }
               [ -n "$BAO_SECRET_PATH" ] || { echo 'bao mode needs bao_secret_path' >&2; exit 1; }
-              [ -n "$POCKET_BAO_CLIENT_ID" ] || { echo 'bao mode needs pocket_bao_client_id' >&2; exit 1; }
               ;;
             *) echo 'secret_source must be fnox or bao' >&2; exit 1 ;;
           esac
@@ -200,7 +193,6 @@ jobs:
           jwt-mount: ${{ inputs.bao_jwt_mount }}
           jwt-role: ${{ inputs.bao_jwt_role }}
           secret-path: ${{ inputs.bao_secret_path }}
-          pocket-client-id: ${{ inputs.pocket_bao_client_id }}
 
       - name: Deploy with broker credentials
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight }}
