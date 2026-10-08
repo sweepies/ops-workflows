@@ -1,9 +1,10 @@
-name: Fetch secrets from OpenBao
+name: OpenBao credentials
 description: >-
   Request this job's GitHub OIDC token, log in to OpenBao's GitHub JWT auth
-  mount with it, read one KV v2 path, and export every key as a masked
-  environment variable for later steps. The job needs `id-token: write`; the
-  assertion never leaves this step.
+  mount, export one KV v2 path and a freshly minted Cloudflare API token as
+  masked environment variables for later steps, and leave the OpenBao token in
+  $RUNNER_TEMP/openbao-token (mode 0600) for an `always()` revoke step. The job
+  needs `id-token: write`; the assertion never leaves this step.
 inputs:
   bao-address:
     description: OpenBao API base URL, e.g. https://bao.maccrae.family
@@ -18,6 +19,9 @@ inputs:
   secret-path:
     description: KV v2 logical path, e.g. kv/renovate-ce
     required: true
+  cloudflare-role:
+    description: Role on the cloudflare/ mount; its token is exported as CLOUDFLARE_API_TOKEN
+    required: true
   audience:
     description: GitHub OIDC audience the role's bound_audiences expects
     required: false
@@ -31,5 +35,6 @@ runs:
         BAO_JWT_MOUNT: ${{ inputs.jwt-mount }}
         BAO_JWT_ROLE: ${{ inputs.jwt-role }}
         BAO_SECRET_PATH: ${{ inputs.secret-path }}
+        BAO_CLOUDFLARE_ROLE: ${{ inputs.cloudflare-role }}
         BAO_AUDIENCE: ${{ inputs.audience }}
-      run: node "$GITHUB_ACTION_PATH/fetch-bao-secrets.mjs"
+      run: node "$GITHUB_ACTION_PATH/openbao-credentials.mjs"

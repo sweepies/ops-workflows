@@ -1,0 +1,94 @@
+name: Alchemy deploy with OpenBao credentials
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        type: string
+        required: false
+        default: .
+      deployment_profile:
+        description: npm or bun
+        type: string
+        required: false
+        default: npm
+      bao_address:
+        description: OpenBao API base URL
+        type: string
+        required: false
+        default: https://bao.maccrae.family
+      bao_jwt_role:
+        description: >-
+          Role on OpenBao's GitHub JWT mount (jwt/) bound to the caller's
+          repository_id, workflow_ref, this workflow's job_workflow_ref and ref
+        type: string
+        required: true
+      bao_secret_path:
+        description: KV v2 logical path exported as environment variables, e.g. kv/renovate-ce
+        type: string
+        required: true
+      cloudflare_role:
+        description: Role on OpenBao's cloudflare/ mount that mints this deploy's CLOUDFLARE_API_TOKEN
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Validate inputs
+        env:
+          DEPLOYMENT_PROFILE: ${{ inputs.deployment_profile }}
+        run: |
+          case "$DEPLOYMENT_PROFILE" in npm|bun) ;; *) echo 'deployment_profile must be npm or bun' >&2; exit 1 ;; esac
+
+      - name: Install Bun
+        if: ${{ inputs.deployment_profile == 'bun' }}
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac
+
+      - name: Install Bun project dependencies
+        if: ${{ inputs.deployment_profile == 'bun' }}
+        working-directory: ${{ inputs.working_directory }}
+        run: bun install --frozen-lockfile
+
+      - name: Install npm project dependencies
+        if: ${{ inputs.deployment_profile == 'npm' }}
+        working-directory: ${{ inputs.working_directory }}
+        run: npm ci
+
+      - name: Fetch credentials from OpenBao
+        uses: sweepies/ops-workflows/.github/actions/openbao-credentials@main
+        with:
+          bao-address: ${{ inputs.bao_address }}
+          jwt-role: ${{ inputs.bao_jwt_role }}
+          secret-path: ${{ inputs.bao_secret_path }}
+          cloudflare-role: ${{ inputs.cloudflare_role }}
+
+      - name: Deploy
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          CI: "true"
+          DEPLOYMENT_PROFILE: ${{ inputs.deployment_profile }}
+        run: |
+          case "$DEPLOYMENT_PROFILE" in
+            bun) bun run deploy ;;
+            npm) npm exec --no -- alchemy deploy ;;
+          esac
+
+      # Revoking the OpenBao token revokes the Cloudflare token's lease, which
+      # deletes that token at Cloudflare instead of waiting for its expiry.
+      - name: Revoke OpenBao credentials
+        if: ${{ always() }}
+        env:
+          BAO_ADDRESS: ${{ inputs.bao_address }}
+        run: |
+          token_file="${RUNNER_TEMP}/openbao-token"
+          [ -s "$token_file" ] || exit 0
+          curl -fsS -X POST -H "X-Vault-Token: $(cat "$token_file")" "${BAO_ADDRESS}/v1/auth/token/revoke-self"
+          rm -f "$token_file"
