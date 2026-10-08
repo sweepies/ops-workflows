@@ -242,7 +242,7 @@ jobs:
         env:
           CI: "true"
           FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare_account_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare_account_id || env.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Verify broker and provider credentials
         if: inputs.integration_preflight
