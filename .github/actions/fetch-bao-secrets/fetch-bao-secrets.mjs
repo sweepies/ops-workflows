@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Fetch one KV v2 path from OpenBao via Pocket ID.
 //
-// 1. Exchange the caller-minted GitHub OIDC token at Pocket ID (client
-//    credentials grant with a JWT bearer assertion) for a short-lived
-//    Bao-scoped access token.
+// 1. Request this job's GitHub OIDC token (audience: the Pocket ID issuer) and
+//    exchange it at Pocket ID (client credentials grant with a JWT bearer
+//    assertion) for a short-lived Bao-scoped access token.
 // 2. Log in to OpenBao with that token (JWT auth backend trusting Pocket ID).
 // 3. Read the KV v2 path.
 // Every key becomes a masked env var for subsequent steps via $GITHUB_ENV.
@@ -11,11 +11,12 @@ import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
 const { BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE, BAO_SECRET_PATH,
-  GITHUB_OIDC_TOKEN, POCKET_ISSUER, POCKET_CLIENT_ID, POCKET_RESOURCE,
-  POCKET_SCOPE, GITHUB_ENV } = process.env;
+  POCKET_ISSUER, POCKET_CLIENT_ID, POCKET_RESOURCE, POCKET_SCOPE, GITHUB_ENV,
+  ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN } = process.env;
 for (const [k, v] of Object.entries({ BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE,
-  BAO_SECRET_PATH, GITHUB_OIDC_TOKEN, POCKET_ISSUER, POCKET_CLIENT_ID,
-  POCKET_RESOURCE, POCKET_SCOPE, GITHUB_ENV })) {
+  BAO_SECRET_PATH, POCKET_ISSUER, POCKET_CLIENT_ID, POCKET_RESOURCE,
+  POCKET_SCOPE, GITHUB_ENV, ACTIONS_ID_TOKEN_REQUEST_URL,
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN })) {
   if (!v) throw new Error(`Missing required environment: ${k}`);
 }
 
@@ -32,9 +33,14 @@ function decodePayload(token) {
   return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
 }
 
-// Mask the caller-minted assertion too: it arrives as a secret, but belt
-// and suspenders if this action is ever wired differently.
-process.stdout.write(`::add-mask::${GITHUB_OIDC_TOKEN}\n`);
+// Mint the assertion in this step so it is never stored or passed between jobs.
+const oidcUrl = new URL(ACTIONS_ID_TOKEN_REQUEST_URL);
+oidcUrl.searchParams.set("audience", POCKET_ISSUER);
+const assertion = (await getJson(oidcUrl, {
+  headers: { Authorization: `Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+}))?.value;
+if (typeof assertion !== "string" || !assertion) throw new Error("GitHub OIDC response lacked a token");
+process.stdout.write(`::add-mask::${assertion}\n`);
 
 // 1. Discover Pocket ID's token endpoint and exchange the GitHub assertion.
 const discovery = await getJson(`${POCKET_ISSUER}/.well-known/openid-configuration`);
@@ -43,7 +49,7 @@ const exchangeBody = new URLSearchParams({
   grant_type: "client_credentials",
   client_id: POCKET_CLIENT_ID,
   client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-  client_assertion: GITHUB_OIDC_TOKEN,
+  client_assertion: assertion,
   resource: POCKET_RESOURCE,
   scope: POCKET_SCOPE,
 });

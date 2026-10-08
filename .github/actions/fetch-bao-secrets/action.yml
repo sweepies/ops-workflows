@@ -1,10 +1,10 @@
 name: Fetch secrets from OpenBao via Pocket ID
 description: >-
-  Exchange a caller-minted GitHub OIDC token at Pocket ID for a Bao-scoped
-  token (client credentials grant), log in to OpenBao with it (JWT auth
-  backend), read one KV v2 path, and export every key as a masked environment
-  variable for later steps. The runner must already be able to reach OpenBao
-  (e.g. joined to the tailnet first).
+  Request this job's GitHub OIDC token, exchange it at Pocket ID for a
+  Bao-scoped token (client credentials grant), log in to OpenBao with it (JWT
+  auth backend), read one KV v2 path, and export every key as a masked
+  environment variable for later steps. The job needs `id-token: write`; the
+  assertion never leaves this step.
 inputs:
   bao-address:
     description: OpenBao API base URL, e.g. https://bao.maccrae.family
@@ -18,9 +18,6 @@ inputs:
     required: true
   secret-path:
     description: KV v2 logical path, e.g. kv/renovate-ce
-    required: true
-  github-oidc-token:
-    description: Caller-minted GitHub OIDC token (audience must be the Pocket ID issuer URL)
     required: true
   pocket-issuer:
     description: Pocket ID issuer URL
@@ -46,7 +43,6 @@ runs:
         BAO_JWT_MOUNT: ${{ inputs.jwt-mount }}
         BAO_JWT_ROLE: ${{ inputs.jwt-role }}
         BAO_SECRET_PATH: ${{ inputs.secret-path }}
-        GITHUB_OIDC_TOKEN: ${{ inputs.github-oidc-token }}
         POCKET_ISSUER: ${{ inputs.pocket-issuer }}
         POCKET_CLIENT_ID: ${{ inputs.pocket-client-id }}
         POCKET_RESOURCE: ${{ inputs.pocket-resource }}

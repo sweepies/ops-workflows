@@ -13,6 +13,9 @@ inputs:
     description: npm, bun, or bun-fnox
     required: false
     default: npm
+  pocket-client-id:
+    description: Caller repository's Pocket ID client for the broker exchange
+    required: true
 runs:
   using: composite
   steps:
@@ -20,7 +23,7 @@ runs:
       if: ${{ inputs.check_only == 'false' && inputs.deployment-profile == 'npm' }}
       env:
         POCKET_ISSUER: https://auth.maccrae.family
-        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_CLIENT_ID: ${{ inputs.pocket-client-id }}
         POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
@@ -29,7 +32,7 @@ runs:
       if: ${{ inputs.check_only == 'false' && inputs.deployment-profile == 'bun' }}
       env:
         POCKET_ISSUER: https://auth.maccrae.family
-        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_CLIENT_ID: ${{ inputs.pocket-client-id }}
         POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
@@ -38,7 +41,7 @@ runs:
       if: ${{ inputs.check_only == 'false' && inputs.deployment-profile == 'bun-fnox' }}
       env:
         POCKET_ISSUER: https://auth.maccrae.family
-        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_CLIENT_ID: ${{ inputs.pocket-client-id }}
         POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}
@@ -47,7 +50,7 @@ runs:
       if: ${{ inputs.check_only == 'true' }}
       env:
         POCKET_ISSUER: https://auth.maccrae.family
-        POCKET_CLIENT_ID: fce36569-010c-4e17-bd30-6fbf9088af07
+        POCKET_CLIENT_ID: ${{ inputs.pocket-client-id }}
         POCKET_FEDERATED_AUDIENCE: https://auth.maccrae.family
         BROKER_URL: https://broker.ops.sweepy.dev
         ALCHEMY_DIRECTORY: ${{ inputs.working-directory }}

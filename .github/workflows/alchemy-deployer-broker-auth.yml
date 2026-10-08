@@ -15,16 +15,13 @@ on:
         type: string
         required: false
         default: fnox
-      tailscale_client_id:
-        description: Tailscale federated identity client ID for the tailnet join (bao mode)
+      pocket_broker_client_id:
+        description: >-
+          Caller's Pocket ID client for the GitHub -> Pocket ID -> broker exchange.
+          Pocket ID matches federated identities by issuer, so each repository has
+          its own client whose Subject is that repository's sub for this workflow.
         type: string
-        required: false
-        default: TqY9uciA9H41CNTRL-kbS2WfACxt11CNTRL
-      tailscale_audience:
-        description: Tailscale federated identity audience (bao mode)
-        type: string
-        required: false
-        default: api.tailscale.com/TqY9uciA9H41CNTRL-kbS2WfACxt11CNTRL
+        required: true
       bao_address:
         description: OpenBao API base URL (bao mode)
         type: string
@@ -45,11 +42,6 @@ on:
         type: string
         required: false
         default: ""
-      bao_oidc_artifact:
-        description: Artifact name holding the caller-minted GitHub OIDC token (bao mode)
-        type: string
-        required: false
-        default: bao-oidc-token
       bao_secret_path:
         description: OpenBao KV v2 logical path, e.g. kv/renovate-ce (bao mode)
         type: string
@@ -110,6 +102,8 @@ jobs:
 
       - name: Verify Pocket ID client credentials exchange
         if: inputs.exchange_preflight
+        env:
+          POCKET_BROKER_CLIENT_ID: ${{ inputs.pocket_broker_client_id }}
         run: |
           node --input-type=module <<'NODE'
           const issuer = 'https://auth.maccrae.family';
@@ -129,7 +123,7 @@ jobs:
           if (discovery.issuer !== issuer) throw new Error('Pocket ID issuer mismatch');
           const body = new URLSearchParams({
             grant_type: 'client_credentials',
-            client_id: 'fce36569-010c-4e17-bd30-6fbf9088af07',
+            client_id: process.env.POCKET_BROKER_CLIENT_ID,
             client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
             client_assertion: assertion,
             resource: 'https://broker.ops.sweepy.dev',
@@ -198,30 +192,6 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: npm ci
 
-      - name: Join Tailscale
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.secret_source == 'bao' }}
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4
-        with:
-          oauth-client-id: ${{ inputs.tailscale_client_id }}
-          audience: ${{ inputs.tailscale_audience }}
-          tags: tag:alchemy-deployer
-
-      - name: Download caller-minted OIDC token
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.secret_source == 'bao' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ inputs.bao_oidc_artifact }}
-          path: ${{ runner.temp }}/bao-oidc
-
-      - name: Load caller-minted OIDC token
-        id: bao-oidc
-        if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.secret_source == 'bao' }}
-        run: |
-          token="$(cat "${RUNNER_TEMP}/bao-oidc/bao-oidc-token.txt")"
-          [ -n "$token" ] || { echo 'bao OIDC artifact is empty' >&2; exit 1; }
-          echo "::add-mask::${token}"
-          echo "token=${token}" >> "$GITHUB_OUTPUT"
-
       - name: Fetch secrets from OpenBao
         if: ${{ !inputs.claim_preflight && !inputs.exchange_preflight && !inputs.integration_preflight && inputs.secret_source == 'bao' }}
         uses: sweepies/ops-workflows/.github/actions/fetch-bao-secrets@main
@@ -230,7 +200,6 @@ jobs:
           jwt-mount: ${{ inputs.bao_jwt_mount }}
           jwt-role: ${{ inputs.bao_jwt_role }}
           secret-path: ${{ inputs.bao_secret_path }}
-          github-oidc-token: ${{ steps.bao-oidc.outputs.token }}
           pocket-client-id: ${{ inputs.pocket_bao_client_id }}
 
       - name: Deploy with broker credentials
@@ -239,6 +208,7 @@ jobs:
         with:
           working-directory: ${{ inputs.working_directory }}
           deployment-profile: ${{ inputs.deployment_profile }}
+          pocket-client-id: ${{ inputs.pocket_broker_client_id }}
         env:
           CI: "true"
           FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}
@@ -249,3 +219,4 @@ jobs:
         uses: sweepies/ops-workflows/.github/actions/broker-auth@main
         with:
           check_only: "true"
+          pocket-client-id: ${{ inputs.pocket_broker_client_id }}

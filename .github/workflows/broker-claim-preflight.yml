@@ -11,6 +11,8 @@ jobs:
     uses: ./.github/workflows/alchemy-deployer-broker-auth.yml
     with:
       claim_preflight: true
+      # ops-workflows' own Pocket ID broker client (Subject: this repository's sub).
+      pocket_broker_client_id: fce36569-010c-4e17-bd30-6fbf9088af07
     permissions:
       contents: read
       id-token: write
