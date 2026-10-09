@@ -11,11 +11,6 @@ on:
         type: string
         required: false
         default: npm
-      bao_address:
-        description: OpenBao API base URL
-        type: string
-        required: false
-        default: https://bao.maccrae.family
       bao_jwt_role:
         description: >-
           Role on OpenBao's GitHub JWT mount (jwt/) bound to the caller's
@@ -29,6 +24,12 @@ on:
       cloudflare_role:
         description: Role on OpenBao's cloudflare/ mount that mints this deploy's CLOUDFLARE_API_TOKEN
         type: string
+        required: true
+    secrets:
+      BAO_ADDRESS:
+        description: >-
+          OpenBao API base URL, also the GitHub OIDC audience. A secret so the
+          private hostname never appears in public workflow files or logs.
         required: true
 
 permissions:
@@ -65,7 +66,7 @@ jobs:
       - name: Fetch credentials from OpenBao
         uses: sweepies/ops-workflows/.github/actions/openbao-credentials@main
         with:
-          bao-address: ${{ inputs.bao_address }}
+          bao-address: ${{ secrets.BAO_ADDRESS }}
           jwt-role: ${{ inputs.bao_jwt_role }}
           secret-path: ${{ inputs.bao_secret_path }}
           cloudflare-role: ${{ inputs.cloudflare_role }}
@@ -86,7 +87,7 @@ jobs:
       - name: Revoke OpenBao credentials
         if: ${{ always() }}
         env:
-          BAO_ADDRESS: ${{ inputs.bao_address }}
+          BAO_ADDRESS: ${{ secrets.BAO_ADDRESS }}
         run: |
           token_file="${RUNNER_TEMP}/openbao-token"
           [ -s "$token_file" ] || exit 0

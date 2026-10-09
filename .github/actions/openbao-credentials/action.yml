@@ -7,7 +7,7 @@ description: >-
   needs `id-token: write`; the assertion never leaves this step.
 inputs:
   bao-address:
-    description: OpenBao API base URL, e.g. https://bao.maccrae.family
+    description: OpenBao API base URL (pass the caller's BAO_ADDRESS secret)
     required: true
   jwt-mount:
     description: OpenBao JWT auth mount trusting GitHub Actions OIDC
@@ -23,9 +23,9 @@ inputs:
     description: Role on the cloudflare/ mount; its token is exported as CLOUDFLARE_API_TOKEN
     required: true
   audience:
-    description: GitHub OIDC audience the role's bound_audiences expects
+    description: GitHub OIDC audience the role's bound_audiences expects; defaults to bao-address
     required: false
-    default: https://bao.maccrae.family
+    default: ""
 runs:
   using: composite
   steps:

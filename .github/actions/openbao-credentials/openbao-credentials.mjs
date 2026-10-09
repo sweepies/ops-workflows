@@ -13,8 +13,10 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const { BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE, BAO_SECRET_PATH, BAO_CLOUDFLARE_ROLE,
-  BAO_AUDIENCE, GITHUB_ENV, RUNNER_TEMP, ACTIONS_ID_TOKEN_REQUEST_URL,
+  GITHUB_ENV, RUNNER_TEMP, ACTIONS_ID_TOKEN_REQUEST_URL,
   ACTIONS_ID_TOKEN_REQUEST_TOKEN } = process.env;
+// The roles' bound_audiences is the OpenBao address unless a caller overrides it.
+const BAO_AUDIENCE = process.env.BAO_AUDIENCE || BAO_ADDRESS;
 for (const [k, v] of Object.entries({ BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE,
   BAO_SECRET_PATH, BAO_CLOUDFLARE_ROLE, BAO_AUDIENCE, GITHUB_ENV, RUNNER_TEMP,
   ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN })) {
