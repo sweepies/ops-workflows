@@ -1,10 +1,11 @@
 name: OpenBao credentials
 description: >-
   Request this job's GitHub OIDC token, log in to OpenBao's GitHub JWT auth
-  mount, export one KV v2 path and a freshly minted Cloudflare API token as
-  masked environment variables for later steps, and leave the OpenBao token in
-  $RUNNER_TEMP/openbao-token (mode 0600) for an `always()` revoke step. The job
-  needs `id-token: write`; the assertion never leaves this step.
+  mount, export a freshly minted Cloudflare API token — plus one KV v2
+  path's keys when secret-path is set — as masked environment variables
+  for later steps, and leave the OpenBao token in $RUNNER_TEMP/openbao-token
+  (mode 0600) for an `always()` revoke step. The job needs `id-token: write`;
+  the assertion never leaves this step.
 inputs:
   bao-address:
     description: OpenBao API base URL (pass the caller's BAO_ADDRESS secret)
@@ -17,8 +18,11 @@ inputs:
     description: JWT auth role bound to the caller's repository and workflow claims
     required: true
   secret-path:
-    description: KV v2 logical path, e.g. kv/renovate-ce
-    required: true
+    description: >-
+      KV v2 logical path exported as environment variables, e.g.
+      kv/renovate-ce; empty exports only the Cloudflare token
+    required: false
+    default: ""
   cloudflare-role:
     description: Role on the cloudflare/ mount; its token is exported as CLOUDFLARE_API_TOKEN
     required: true
