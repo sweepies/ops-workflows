@@ -4,7 +4,7 @@
 // 1. Request a GitHub OIDC token for the OpenBao audience.
 // 2. Log in to OpenBao's GitHub JWT auth mount; the role binds the caller's
 //    repository_id, workflow_ref, job_workflow_ref and ref claims.
-// 3. Read the KV v2 path.
+// 3. Read the KV v2 path, when secret-path is set.
 // 4. Mint a Cloudflare API token from the cloudflare/ mount. Its lease belongs
 //    to the OpenBao token, so the workflow's revoke step deletes it.
 // Every value becomes a masked env var for subsequent steps via $GITHUB_ENV.
@@ -18,7 +18,7 @@ const { BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE, BAO_SECRET_PATH, BAO_CLOUDFLAR
 // The roles' bound_audiences is the OpenBao address unless a caller overrides it.
 const BAO_AUDIENCE = process.env.BAO_AUDIENCE || BAO_ADDRESS;
 for (const [k, v] of Object.entries({ BAO_ADDRESS, BAO_JWT_MOUNT, BAO_JWT_ROLE,
-  BAO_SECRET_PATH, BAO_CLOUDFLARE_ROLE, BAO_AUDIENCE, GITHUB_ENV, RUNNER_TEMP,
+  BAO_CLOUDFLARE_ROLE, BAO_AUDIENCE, GITHUB_ENV, RUNNER_TEMP,
   ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN })) {
   if (!v) throw new Error(`Missing required environment: ${k}`);
 }
@@ -58,12 +58,15 @@ mask(baoToken);
 writeFileSync(join(RUNNER_TEMP, "openbao-token"), baoToken, { mode: 0o600 });
 const headers = { "X-Vault-Token": baoToken };
 
-// 3. Read the KV v2 path.
-const [mount, ...rest] = BAO_SECRET_PATH.split("/").filter(Boolean);
-if (!mount || rest.length === 0) throw new Error(`Bad secret path: ${BAO_SECRET_PATH}`);
-const kv = await getJson(`${BAO_ADDRESS}/v1/${mount}/data/${rest.join("/")}`, { headers });
-const data = kv?.data?.data;
-if (!data || typeof data !== "object") throw new Error("OpenBao KV response had no data");
+// 3. Read the KV v2 path, when secret-path is set.
+let data = {};
+if (BAO_SECRET_PATH) {
+  const [mount, ...rest] = BAO_SECRET_PATH.split("/").filter(Boolean);
+  if (!mount || rest.length === 0) throw new Error(`Bad secret path: ${BAO_SECRET_PATH}`);
+  const kv = await getJson(`${BAO_ADDRESS}/v1/${mount}/data/${rest.join("/")}`, { headers });
+  data = kv?.data?.data;
+  if (!data || typeof data !== "object") throw new Error("OpenBao KV response had no data");
+}
 
 // 4. Mint the Cloudflare token.
 const cloudflare = await getJson(`${BAO_ADDRESS}/v1/cloudflare/creds/${encodeURIComponent(BAO_CLOUDFLARE_ROLE)}`, { headers });
@@ -80,4 +83,5 @@ for (const [key, value] of Object.entries(exported)) {
   envOut += `${key}<<${delimiter}\n${value}\n${delimiter}\n`;
 }
 appendFileSync(GITHUB_ENV, envOut);
-console.log(`Exported ${Object.keys(data).length} secrets from ${BAO_SECRET_PATH} and a Cloudflare token from role ${BAO_CLOUDFLARE_ROLE} (lease ${cloudflare.lease_duration}s)`);
+const kvPart = BAO_SECRET_PATH ? `${Object.keys(data).length} secrets from ${BAO_SECRET_PATH} and ` : "";
+console.log(`Exported ${kvPart}a Cloudflare token from role ${BAO_CLOUDFLARE_ROLE} (lease ${cloudflare.lease_duration}s)`);
